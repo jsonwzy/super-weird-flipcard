@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Memory Match · 翻牌记忆</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=ZCOOL+QingKe+HuangYou&display=swap" rel="stylesheet">
+<style>
+  /* ===== 主题变量(设计师可在此统一调整) ===== */
+  :root{
+    --max-n: 6;              /* 最大网格,卡片尺寸按它适配屏宽 */
+    --gap: 8px;
+    --board-max: 600px;      /* 棋盘最大宽度(调大=格子更大) */
+    --bg: #0f1226;
+    --bg2:#1a1f3d;
+    --card-back:#2b3266;
+    --card-front:#eef1ff;
+    --accent:#6c8cff;
+    --danger:#ff5470;
+    --ok:#43e0a0;
+    --text:#eef1ff;
+    --muted:#9aa3d0;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:#0f1226 center/cover no-repeat fixed;
+    color:var(--text); min-height:100%;
+    display:flex; align-items:center; justify-content:center;
+    padding:16px; user-select:none;
+    transition:background-image .2s;
+  }
+  /* 首页背景图;闯关页背景交给 #stage */
+  body[data-screen="home"]{background-image:linear-gradient(rgba(8,9,22,.12),rgba(8,9,22,.3)), url('back_img/main.png');}
+  body[data-screen="game"]{background-image:none; background:#0a0c18;}
+  /* 首页:标题在上、按钮在下 */
+  #home.active{display:flex; flex-direction:column; align-items:center; justify-content:space-between; min-height:86vh; padding:2.5vh 12px 8vh;}
+  /* 卡通描边产品名 */
+  .game-logo{
+    margin:0; text-align:center; line-height:1; white-space:nowrap;
+    font-family:'ZCOOL KuaiLe','ZCOOL QingKe HuangYou',sans-serif;
+    font-size:clamp(40px, 9.5vw, 92px); letter-spacing:.02em;
+    animation:logofloat 3s ease-in-out infinite;
+  }
+  .game-logo span{
+    display:inline-block; position:relative;
+    -webkit-text-stroke:.08em #1c1730; paint-order:stroke fill;
+    text-shadow:0 .09em 0 rgba(0,0,0,.32), 0 .15em .18em rgba(0,0,0,.4);
+  }
+  /* 多彩配色,呼应背景里的卡通角色 */
+  .game-logo span:nth-child(1){color:#ff5a4d;}  /* 红 */
+  .game-logo span:nth-child(2){color:#ffce3a;}  /* 黄 */
+  .game-logo span:nth-child(3){color:#5fc14e;}  /* 绿 */
+  .game-logo span:nth-child(4){color:#48a6e8;}  /* 蓝 */
+  .game-logo span:nth-child(5){color:#ff9a3c;}  /* 橙 */
+  /* 每个字歪斜错位,做出怪诞手摆感 */
+  .game-logo span:nth-child(odd){transform:rotate(-6deg) translateY(.04em);}
+  .game-logo span:nth-child(even){transform:rotate(6deg) translateY(-.06em);}
+  /* 「诞」上面的怪诞大眼睛 */
+  .game-logo .eye{position:absolute; left:50%; top:-.42em; transform:translateX(-50%);
+    width:.5em; height:.5em; background:#fff; border:.06em solid #1c1730; border-radius:50%;}
+  .game-logo .eye::after{content:''; position:absolute; left:56%; top:62%; transform:translate(-50%,-50%);
+    width:.2em; height:.2em; background:#1c1730; border-radius:50%;}
+  @keyframes logofloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  /* 首页按钮:卡通贴纸风,匹配背景(粗描边+厚底3D+跳动) */
+  #home .btn{
+    font-size:28px; font-weight:900; letter-spacing:3px; color:#fff;
+    padding:18px 60px; border-radius:999px;
+    background:linear-gradient(180deg,#ff7a5c,#ec4438);
+    border:4px solid #fff;
+    box-shadow:0 0 0 5px #2b2336, 0 12px 0 #a82a22, 0 22px 30px rgba(0,0,0,.45);
+    text-shadow:0 2px 0 rgba(0,0,0,.28);
+    animation:bob 1.6s ease-in-out infinite;
+  }
+  #home .btn:active{transform:translateY(8px); box-shadow:0 0 0 5px #2b2336, 0 4px 0 #a82a22, 0 10px 16px rgba(0,0,0,.4); animation:none;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  body[data-screen="game"] #game{max-width:none; background:none; padding:0; border:none; box-shadow:none;}
+  .screen{display:none; width:100%; max-width:var(--board-max); margin:0 auto;}
+  .screen.active{display:block;}
+
+  /* ===== 闯关页舞台(干净场景背景 + 自由布局) ===== */
+  #stage{
+    position:fixed; inset:0; overflow:hidden;
+    background:url('back_img/challenge_characters_bg.png') center/cover no-repeat;
+    font-size:clamp(11px, 1.5vw, 22px);
+  }
+  /* 顶部栏:左=返回+关卡,右=容错+进度 */
+  #topbar{position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:flex-start; padding:2.4% 3%; z-index:3;}
+  .cluster{display:flex; align-items:center; gap:.5em;}
+  /* 居中大倒计时 */
+  #timer{position:absolute; top:3%; left:50%; transform:translateX(-50%); z-index:3;
+    font-size:2.7em; font-weight:900; color:#fff; font-variant-numeric:tabular-nums;
+    text-shadow:0 .05em 0 #c25a2a, 0 .12em .18em rgba(0,0,0,.4); letter-spacing:1px;}
+  #timer.warn{color:#ffe14d; animation:pulse .7s infinite;}
+  /* 通用胶囊(卡通描边) */
+  .pill{background:#fffdf5; color:#4a3a28; font-weight:800; border-radius:999px;
+    padding:.25em .85em; white-space:nowrap; font-variant-numeric:tabular-nums; font-size:1.2em;
+    border:.16em solid #fff; box-shadow:0 0 0 .13em rgba(0,0,0,.18), 0 .2em 0 rgba(0,0,0,.12);}
+  #mistakes.low{color:var(--danger);}
+  /* 关卡徽章 */
+  #lvlLabel{background:linear-gradient(180deg,#ffd35a,#f4a93a); color:#5a3300; font-weight:900;
+    border-radius:999px; padding:.25em .95em; font-size:1.2em;
+    border:.16em solid #fff; box-shadow:0 0 0 .13em rgba(0,0,0,.18), 0 .2em 0 rgba(0,0,0,.15);}
+  /* 返回按钮(卡通圆钮) */
+  #quitBtn.qbtn{width:2.3em; height:2.3em; border-radius:50%; cursor:pointer; color:#fff; font-size:1.2em; font-weight:900;
+    background:linear-gradient(180deg,#ff7a5c,#ec4438); border:.16em solid #fff;
+    box-shadow:0 0 0 .13em rgba(0,0,0,.18), 0 .2em 0 #a82a22; display:flex; align-items:center; justify-content:center; padding:0; line-height:1;}
+  #quitBtn.qbtn:active{transform:translateY(.1em);}
+  /* 声音开关(右上角圆钮) */
+  .iconbtn{width:2.3em; height:2.3em; border-radius:50%; cursor:pointer; font-size:1.05em; line-height:1;
+    background:#fffdf5; border:.16em solid #fff; box-shadow:0 0 0 .13em rgba(0,0,0,.18), 0 .2em 0 rgba(0,0,0,.12);
+    display:flex; align-items:center; justify-content:center; padding:0;}
+  .iconbtn:active{transform:translateY(.1em);}
+  /* 棋盘安全区:固定居中区域;不做面板,仅一层很轻的柔光暗化帮助看清卡牌 */
+  #gridPanel{position:absolute; left:50%; top:52%; transform:translate(-50%,-50%);
+    width:54%; height:66%; display:flex; align-items:center; justify-content:center;}
+  #gridPanel::before{content:''; position:absolute; inset:-8%; z-index:-1; pointer-events:none;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.26), rgba(0,0,0,.12) 48%, rgba(0,0,0,0) 72%);
+    filter:blur(10px);}
+  /* 提示按钮:底部居中 */
+  #hintBtn{position:absolute; left:50%; bottom:3.5%; transform:translateX(-50%); z-index:3;
+    display:flex; align-items:center; gap:.4em; cursor:pointer;
+    background:linear-gradient(180deg,#ffd35a,#f4a93a); color:#5a3300; font-weight:900;
+    border-radius:999px; padding:.45em 1.4em; font-size:1.2em;
+    border:.16em solid #fff; box-shadow:0 0 0 .13em rgba(0,0,0,.18), 0 .25em 0 #c8861f;}
+  #hintBtn:active{transform:translateX(-50%) translateY(.1em);}
+  #hintBtn b{background:#fff; color:#d2691e; border-radius:999px; padding:0 .45em; font-size:.8em;}
+  #hintBtn:disabled{filter:grayscale(.6) opacity(.6); cursor:not-allowed;}
+
+  /* ===== 主页 ===== */
+  #home{text-align:center;}
+  .title{font-size:clamp(32px,9vw,48px); font-weight:800; letter-spacing:1px;
+    background:linear-gradient(90deg,#8ea7ff,#c8a6ff); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .subtitle{color:var(--muted); margin:8px 0 28px; font-size:14px;}
+  .best{color:var(--muted); margin-bottom:24px; font-size:14px;}
+  .best b{color:var(--accent);}
+  .btn{
+    display:inline-block; border:none; cursor:pointer; font-weight:700;
+    padding:16px 40px; border-radius:14px; font-size:18px; color:#fff;
+    background:linear-gradient(90deg,var(--accent),#8a6cff);
+    box-shadow:0 8px 24px rgba(108,140,255,.35); transition:transform .08s ease;
+  }
+  .btn:active{transform:scale(.96);}
+  .btn.secondary{background:#2b3266; box-shadow:none; color:var(--text);}
+
+  /* ===== 顶部大倒计时(居中放大) ===== */
+  .bigtimer{
+    text-align:center; font-size:clamp(44px,13vw,72px); font-weight:800;
+    letter-spacing:2px; line-height:1; margin:2px 0 14px;
+    font-variant-numeric:tabular-nums; text-shadow:0 4px 24px rgba(108,140,255,.35);
+  }
+  .bigtimer.warn{color:var(--danger); animation:pulse .7s infinite; text-shadow:0 4px 24px rgba(255,84,112,.5);}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  /* ===== 状态栏 ===== */
+  .hud{display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:14px; margin-bottom:14px;}
+  .hud .lvl{color:var(--text); font-weight:700; font-size:16px;}
+  .hud .mist b{color:var(--text);}
+  .hud .mist.low b{color:var(--danger);}
+
+  /* ===== 棋盘 ===== */
+  .board{
+    --card: calc((min(100vw - 32px, var(--board-max)) - (var(--max-n) - 1) * var(--gap)) / var(--max-n));
+    display:grid; gap:var(--gap); justify-content:center;
+    grid-auto-rows: var(--card);
+  }
+  .cell{width:var(--card); height:var(--card);}
+  .cell.blank{visibility:hidden;}
+  .board, .board *{cursor:none;}   /* 棋盘内隐藏系统光标,用自定义瞄准镜 */
+
+  /* 卡片 3D 翻转 */
+  .card{width:100%; height:100%; perspective:600px; position:relative; transition:transform .12s, filter .12s;}
+  /* 悬停:整卡放大 + 蓝色光晕 */
+  .card:hover{transform:scale(1.06); z-index:5; filter:drop-shadow(0 0 8px rgba(108,140,255,.9));}
+  .card.matched:hover{transform:none; filter:none;}
+  /* ===== 自定义瞄准镜光标(Target Cursor:四角包裹) ===== */
+  #cursor{position:fixed; left:0; top:0; width:0; height:0; z-index:9999; pointer-events:none; opacity:0; transition:opacity .18s; --cc:var(--accent);}
+  #cursor.show{opacity:1;}
+  #cursor.lock{--cc:var(--danger);}
+  #cursor .tdot{position:absolute; left:0; top:0; width:5px; height:5px; margin:-2.5px 0 0 -2.5px; border-radius:50%; background:var(--cc); box-shadow:0 0 8px var(--cc);}
+  #cursor .tc{position:absolute; left:0; top:0; width:14px; height:14px; border:2px solid var(--cc); transition:transform .2s ease;}
+  #cursor .tc.tl{border-right:none; border-bottom:none;}
+  #cursor .tc.tr{border-left:none; border-bottom:none;}
+  #cursor .tc.bl{border-right:none; border-top:none;}
+  #cursor .tc.br{border-left:none; border-top:none;}
+  .card .inner{position:relative; width:100%; height:100%; transition:transform .35s; transform-style:preserve-3d;}
+  .card.flipped .inner, .card.matched .inner{transform:rotateY(180deg);}
+  .face{
+    position:absolute; inset:0; border-radius:12px; backface-visibility:hidden;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  .face.back{
+    background:linear-gradient(135deg,var(--card-back),#3a4488);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.06);
+  }
+  .face.back::after{content:"?"; font-size:calc(var(--card)*.4); color:rgba(255,255,255,.25); font-weight:800;}
+  .face.front{
+    background:var(--card-front); transform:rotateY(180deg); padding:0;
+  }
+  /* 放大 1.18 倍裁掉素材自带的白色卡框(.face 已 overflow:hidden 会裁切) */
+  .cardimg{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; transform:scale(1.18); transform-origin:center;}
+  .card.matched .face.front{box-shadow:inset 0 0 0 3px var(--ok); animation:pop .3s;}
+  .card.wrong  .face.front{box-shadow:inset 0 0 0 3px var(--danger); animation:shake .3s;}
+  @keyframes pop{0%{transform:rotateY(180deg) scale(1)}50%{transform:rotateY(180deg) scale(1.12)}100%{transform:rotateY(180deg) scale(1)}}
+  @keyframes shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-4px)}75%{transform:rotateY(180deg) translateX(4px)}}
+
+  .foot{margin-top:18px; text-align:center;}
+  .link{color:var(--muted); background:none; border:none; cursor:pointer; font-size:14px; text-decoration:underline;}
+
+  /* ===== 弹窗(过关/失败/通关) ===== */
+  .overlay{position:fixed; inset:0; background:rgba(7,9,22,.78); display:none; align-items:center; justify-content:center; padding:24px; z-index:10;}
+  .overlay.active{display:flex;}
+  .modal{background:var(--bg2); border:1px solid rgba(255,255,255,.08); border-radius:20px; padding:32px 28px; text-align:center; width:100%; max-width:340px; box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .modal .emoji{font-size:56px; margin-bottom:8px;}
+  .modal h2{margin:0 0 6px; font-size:24px;}
+  .modal p{color:var(--muted); margin:0 0 22px; font-size:15px;}
+  .modal .btn{width:100%; margin-top:10px; padding:14px;}
+</style>
+</head>
+<body>
+
+  <!-- 主页:产品名 + 开始按钮 -->
+  <section id="home" class="screen active">
+    <h1 class="game-logo"><span>超</span><span>怪</span><span>诞<i class="eye"></i></span><span>翻</span><span>牌</span></h1>
+    <button class="btn" id="startBtn">开始挑战</button>
+  </section>
+
+  <!-- 游戏页:干净背景 + 自由布局 HUD -->
+  <section id="game" class="screen">
+    <div id="stage">
+      <div id="topbar">
+        <div class="cluster">
+          <button class="qbtn" id="quitBtn" title="返回主页">←</button>
+          <div id="lvlLabel">第1关</div>
+        </div>
+        <div class="cluster">
+          <div class="pill" id="mistakes">❤ 3</div>
+          <button class="iconbtn" id="muteBtn" title="开关声音">🔊</button>
+        </div>
+      </div>
+      <div id="timer">1:00</div>
+      <div id="gridPanel"><div class="board" id="board"></div></div>
+      <button id="hintBtn">💡 提示 <b id="hintCount">1</b></button>
+    </div>
+  </section>
+
+  <!-- 自定义瞄准镜光标(Target Cursor) -->
+  <div id="cursor">
+    <span class="tdot"></span>
+    <span class="tc tl"></span><span class="tc tr"></span>
+    <span class="tc bl"></span><span class="tc br"></span>
+  </div>
+
+  <!-- 结算弹窗 -->
+  <div class="overlay" id="overlay">
+    <div class="modal">
+      <div class="emoji" id="mEmoji">🎉</div>
+      <h2 id="mTitle">过关!</h2>
+      <p id="mDesc"></p>
+      <button class="btn" id="mPrimary">继续</button>
+      <button class="btn secondary" id="mSecondary">返回主页</button>
+    </div>
+  </div>
+
+<script>
+/* =========================================================
+   翻牌记忆 Memory Match —— 单文件实现(v2.5 PRD)
+   规格:10 关(3×3→6×6) / 每关 60s / 容错 N→3 递减 / 奇数网格留1空位
+   ========================================================= */
+
+// ---- 可调参数 ----
+const TIME_LIMIT = 60;        // 每关固定限时(秒)
+const PREVIEW_BY_N = {3:3, 4:4, 5:7, 6:10};  // 各网格开局记忆时间(秒),不占用 60s
+const FLIP_BACK_MS = 800;     // 翻错后翻回延时
+// 关卡计划(数组顺序=闯关顺序):n=网格边长,mis=可错次数。要加/删/调关卡改这里即可
+const LEVEL_PLAN = [
+  {n:4, mis:3}, {n:4, mis:2}, {n:4, mis:1}, {n:4, mis:0},   // 4×4 共 4 关:失误 3→2→1→0
+  {n:6, mis:3}, {n:6, mis:2},                                // 6×6 共 2 关
+];
+
+// ---- 卡面映射:Cards/ 素材(逻辑只认 faceId=数组下标,换素材改这里即可)----
+const FACE_POOL = Array.from({length:20}, (_,i)=>`Cards/sprite_${i+1}.png`);
+
+// ---- 关卡生成(按 LEVEL_PLAN)----
+function buildLevels(){
+  return LEVEL_PLAN.map((p, idx)=>{
+    const n=p.n, cells=n*n, blanks=cells%2, pairs=(cells-blanks)/2;
+    return {idx, n, cols:n, rows:n, blanks, pairs, maxMistakes:p.mis, time:TIME_LIMIT, preview:(PREVIEW_BY_N[n] ?? n)};
+  });
+}
+const LEVELS = buildLevels();
+
+// ---- 全局状态 ----
+let curIdx = 0;
+let flipped = [];      // 当前翻开未结算的 card 元素
+let mistakes = 0;
+let matched = 0;
+let lock = false;
+let timeLeft = 0;
+let timerId = null;
+let bestLevel = +(localStorage.getItem('mm_best') || 0);
+
+// ---- DOM ----
+const $ = s => document.querySelector(s);
+const screens = {home:$('#home'), game:$('#game')};
+const board = $('#board');
+
+// 自定义瞄准镜光标(Target Cursor):四角框跟随鼠标,平时缓慢旋转,悬停卡牌时弹开包裹
+const cursorEl = $('#cursor');
+const cornerEls = {
+  tl: cursorEl.querySelector('.tl'), tr: cursorEl.querySelector('.tr'),
+  bl: cursorEl.querySelector('.bl'), br: cursorEl.querySelector('.br')
+};
+let mouseX=0, mouseY=0, rot=0, activeTarget=null;
+const CC = { off:11, W:14, pad:6 };   // off=空闲半框 / W=角尺寸 / pad=包裹留白
+function applyCorners(tl,tr,bl,br){
+  cornerEls.tl.style.transform = `translate(${tl.x}px,${tl.y}px)`;
+  cornerEls.tr.style.transform = `translate(${tr.x - CC.W}px,${tr.y}px)`;
+  cornerEls.bl.style.transform = `translate(${bl.x}px,${bl.y - CC.W}px)`;
+  cornerEls.br.style.transform = `translate(${br.x - CC.W}px,${br.y - CC.W}px)`;
+}
+function idleCorners(){ const o=CC.off; applyCorners({x:-o,y:-o},{x:o,y:-o},{x:-o,y:o},{x:o,y:o}); }
+function frameCorners(t){
+  const r=t.getBoundingClientRect(), p=CC.pad;
+  applyCorners(
+    {x:r.left-p-mouseX,  y:r.top-p-mouseY},
+    {x:r.right+p-mouseX, y:r.top-p-mouseY},
+    {x:r.left-p-mouseX,  y:r.bottom+p-mouseY},
+    {x:r.right+p-mouseX, y:r.bottom+p-mouseY}
+  );
+}
+window.addEventListener('mousemove', e=>{ mouseX=e.clientX; mouseY=e.clientY; });
+function cursorLoop(){
+  cursorEl.style.left = mouseX+'px';
+  cursorEl.style.top  = mouseY+'px';
+  if(activeTarget && document.body.contains(activeTarget)){
+    rot += (0 - rot)*0.25; if(Math.abs(rot)<0.2) rot=0;   // 锁定时转正对齐
+    frameCorners(activeTarget);
+  }else{
+    rot += 0.7; if(rot>180) rot-=360;                      // 空闲缓慢旋转
+    idleCorners();
+  }
+  cursorEl.style.transform = `rotate(${rot}deg)`;
+  requestAnimationFrame(cursorLoop);
+}
+requestAnimationFrame(cursorLoop);
+board.addEventListener('mouseenter', ()=>cursorEl.classList.add('show'));
+board.addEventListener('mouseleave', ()=>{ cursorEl.classList.remove('show','lock'); activeTarget=null; });
+
+function showScreen(name){
+  Object.values(screens).forEach(s=>s.classList.remove('active'));
+  screens[name].classList.add('active');
+  document.body.dataset.screen = name;   // 切换页面背景图
+  playBgm(name);                          // 切换背景音乐
+}
+
+// ---- 工具:洗牌 ----
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+
+// ---- 音效 / 静音 ----
+let audio;
+let muted = localStorage.getItem('mm_muted')==='1';   // 全局静音开关
+function beep(freq, dur=0.12, type='sine', vol=0.15){
+  if(muted) return;
+  try{
+    audio = audio || new (window.AudioContext||window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type=type; o.frequency.value=freq; o.connect(g); g.connect(audio.destination);
+    g.gain.setValueAtTime(vol, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime+dur);
+    o.start(); o.stop(audio.currentTime+dur);
+  }catch(e){}
+}
+// 文件音效:每次新建 Audio 播放,允许快速重复触发不被打断
+function fileSfx(src, vol){ return ()=>{ if(muted) return; try{ const a=new Audio(src); a.volume=vol; a.play().catch(()=>{}); }catch(e){} }; }
+const sfx = {
+  flip:()=>beep(440,0.08,'triangle'),
+  match: fileSfx('sound/victory-matched.wav', 0.2),   // 配对成功音量(减半)
+  wrong: fileSfx('sound/wrong-matched.ogg', 0.7),
+  win:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.15),i*110));},
+  fail:()=>{[330,247,165].forEach((f,i)=>setTimeout(()=>beep(f,0.2,'sawtooth'),i*150));},
+};
+
+// ---- 背景音乐:随页面切换循环播放 ----
+const bgmHome = new Audio('sound/homepage.mp3'); bgmHome.loop=true; bgmHome.volume=0.35;
+const bgmGame = new Audio('sound/challenge.mp3'); bgmGame.loop=true; bgmGame.volume=0.35;
+let curBgm = null;
+function playBgm(which){
+  const next = which==='game' ? bgmGame : bgmHome;
+  if(curBgm && curBgm!==next) curBgm.pause();
+  curBgm = next;
+  if(!muted) next.play().catch(()=>{});   // 静音或被自动播放拦截时不播
+}
+// 首次任意交互后解锁并播放当前页面的 BGM(绕过浏览器自动播放限制)
+function unlockAudio(){ playBgm(document.body.dataset.screen || 'home'); ['pointerdown','click','keydown','touchstart'].forEach(ev=>document.removeEventListener(ev, unlockAudio)); }
+['pointerdown','click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev, unlockAudio));
+
+// ---- 静音开关 ----
+function updateMuteUI(){ const b=$('#muteBtn'); if(b) b.textContent = muted ? '🔇' : '🔊'; }
+function toggleMute(){
+  muted = !muted; localStorage.setItem('mm_muted', muted?'1':'0');
+  if(muted){ if(curBgm) curBgm.pause(); } else if(curBgm){ curBgm.play().catch(()=>{}); }
+  updateMuteUI();
+}
+
+// ---- 计时器 ----
+let previewIV=null, previewTO=null;   // 记忆阶段计时器,退出时一并清除
+function startTimer(){
+  stopTimer();
+  updateTimerUI();
+  timerId = setInterval(()=>{
+    timeLeft--;
+    updateTimerUI();
+    if(timeLeft<=0){ stopTimer(); fail('时间到!'); }
+  },1000);
+}
+function stopTimer(){
+  if(timerId){clearInterval(timerId); timerId=null;}
+  if(previewIV){clearInterval(previewIV); previewIV=null;}
+  if(previewTO){clearTimeout(previewTO); previewTO=null;}
+}
+function fmt(s){ const m=Math.floor(s/60); return m+':'+String(s%60).padStart(2,'0'); }
+function updateTimerUI(){
+  const t=$('#timer'); t.textContent=fmt(Math.max(0,timeLeft));
+  t.classList.toggle('warn', timeLeft<=10);
+}
+
+// ---- 开始某一关 ----
+function startLevel(idx){
+  stopTimer();                 // 清除上一关残留的计时/记忆计时
+  curIdx = idx;
+  const lv = LEVELS[idx];
+  flipped=[]; mistakes=0; matched=0; lock=false;
+  timeLeft = lv.time;
+
+  // 构建牌面:pairs 个 faceId 各两张 + blanks 个空位,洗牌
+  const faceIds = [];
+  for(let i=0;i<lv.pairs;i++){ faceIds.push(i, i); }
+  const cells = faceIds.map(id=>({type:'card', faceId:id}));
+  for(let i=0;i<lv.blanks;i++) cells.push({type:'blank'});
+  shuffle(cells);
+
+  // 渲染
+  board.style.setProperty('--cols', lv.cols);
+  board.style.gridTemplateColumns = `repeat(${lv.cols}, var(--card))`;
+  board.innerHTML='';
+  cells.forEach(c=>{
+    const cell=document.createElement('div');
+    cell.className='cell'+(c.type==='blank'?' blank':'');
+    if(c.type==='card'){
+      cell.innerHTML=`<div class="card" data-face="${c.faceId}">
+        <div class="inner">
+          <div class="face back"></div>
+          <div class="face front"><img class="cardimg" src="${FACE_POOL[c.faceId % FACE_POOL.length]}" alt="" draggable="false"></div>
+        </div></div>`;
+      const cardEl = cell.querySelector('.card');
+      cardEl.addEventListener('click', onCardClick);
+      cardEl.addEventListener('mouseenter', ()=>{ if(!cardEl.classList.contains('matched')){ activeTarget=cardEl; cursorEl.classList.add('lock'); } });
+      cardEl.addEventListener('mouseleave', ()=>{ activeTarget=null; cursorEl.classList.remove('lock'); });
+    }
+    board.appendChild(cell);
+  });
+
+  // 显示舞台并按面板尺寸把卡片定成固定大小(按 MAX_N,小网格居中)
+  showScreen('game');
+  sizeBoard();
+
+  // HUD(叠加到效果图对应位置)
+  $('#lvlLabel').textContent = `第${idx+1}关`;
+  hintLeft = HINT_USES; updateHintUI();
+  updateMistakesUI(lv);
+  updateProgressUI(lv);
+  startPreview(lv);
+}
+
+// 卡牌折中规则:在固定安全区内,卡牌随关卡变小,但设上下限
+//  3×3 → 触上限(偏大但不夸张,不铺满,居中);6×6 → 接近下限,接近铺满
+function sizeBoard(){
+  const gp = $('#gridPanel');
+  const zoneW = gp.clientWidth, zoneH = gp.clientHeight;
+  if(!zoneW || !zoneH) return;
+  const N = LEVELS[curIdx].cols;
+  const zoneMin = Math.min(zoneW, zoneH);
+  const gap = Math.max(4, Math.round(zoneMin * 0.02));
+  const maxCard = zoneMin / 3.4;     // 上限:3×3 不会大到铺满
+  const minCard = 34;                // 下限:保证可点
+  let card = (zoneMin - (N - 1) * gap) / N;
+  card = Math.max(minCard, Math.min(card, maxCard));
+  board.style.setProperty('--gap', gap + 'px');
+  board.style.setProperty('--card', Math.floor(card) + 'px');
+}
+
+// ---- 开局记忆阶段:全部亮牌 N 秒,锁输入,不计游戏时间 ----
+function startPreview(lv){
+  lock = true;
+  const cards = board.querySelectorAll('.card');
+  cards.forEach(c=>c.classList.add('flipped'));   // 全部翻开
+  let pv = lv.preview;
+  const t=$('#timer'); t.classList.remove('warn');
+  t.textContent = '👀 '+pv;
+  previewIV = setInterval(()=>{ pv--; if(pv>0) t.textContent='👀 '+pv; }, 1000);
+  previewTO = setTimeout(()=>{
+    clearInterval(previewIV); previewIV=null; previewTO=null;
+    cards.forEach(c=>c.classList.remove('flipped'));  // 翻回
+    flipped=[]; lock=false;
+    startTimer();                                     // 此刻才开始 60s
+  }, lv.preview*1000);
+}
+
+function updateMistakesUI(lv){
+  const left = lv.maxMistakes - mistakes;
+  const el=$('#mistakes');
+  el.textContent = `❤ ${left}`;
+  el.classList.toggle('low', left<=1);
+}
+function updateProgressUI(lv){ const el=$('#progress'); if(el) el.textContent = `${matched}/${lv.pairs}`; }
+
+// ---- 提示:短暂亮出所有未配对的牌 ----
+const HINT_USES = 1;   // 每关固定 1 次提示
+let hintLeft = 0;
+function updateHintUI(){ const b=$('#hintCount'); if(b) b.textContent=hintLeft; const btn=$('#hintBtn'); if(btn) btn.disabled=hintLeft<=0; }
+function doHint(){
+  if(lock || hintLeft<=0) return;
+  // 找任意一组未配对、未翻开的对子
+  const cards = [...board.querySelectorAll('.card:not(.matched):not(.flipped)')];
+  const seen = {}; let pair = null;
+  for(const c of cards){ const f=c.dataset.face; if(seen[f]){ pair=[seen[f], c]; break; } seen[f]=c; }
+  if(!pair) return;
+  hintLeft--; updateHintUI();
+  lock = true;
+  pair.forEach(c=>c.classList.add('flipped'));
+  setTimeout(()=>{
+    pair.forEach(c=>{ if(!c.classList.contains('matched')) c.classList.remove('flipped'); });
+    lock=false;
+  }, 1000);
+}
+
+// ---- 点击翻牌 ----
+function onCardClick(e){
+  const card = e.currentTarget;
+  if(lock || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+
+  card.classList.add('flipped');
+  sfx.flip();
+  flipped.push(card);
+
+  if(flipped.length===2){
+    const [a,b]=flipped;
+    if(a.dataset.face === b.dataset.face){
+      // 配对成功
+      a.classList.add('matched'); b.classList.add('matched');
+      flipped=[]; matched++;
+      sfx.match();
+      const lv=LEVELS[curIdx];
+      updateProgressUI(lv);
+      if(matched===lv.pairs){ stopTimer(); setTimeout(levelClear, 450); }
+    }else{
+      // 翻错
+      lock=true; mistakes++;
+      const lv=LEVELS[curIdx];
+      updateMistakesUI(lv);
+      a.classList.add('wrong'); b.classList.add('wrong');
+      sfx.wrong();
+      if(mistakes>=lv.maxMistakes){
+        stopTimer();
+        setTimeout(()=>fail('翻错次数用尽!'), FLIP_BACK_MS);
+      }else{
+        setTimeout(()=>{
+          a.classList.remove('flipped','wrong'); b.classList.remove('flipped','wrong');
+          flipped=[]; lock=false;
+        }, FLIP_BACK_MS);
+      }
+    }
+  }
+}
+
+// ---- 过关 / 失败 / 通关 ----
+function levelClear(){
+  // 记录最高关卡
+  const reached = curIdx+1;
+  if(reached>bestLevel){ bestLevel=reached; localStorage.setItem('mm_best', bestLevel); }
+
+  if(curIdx+1 < LEVELS.length){
+    sfx.win();
+    const nextLv = LEVELS[curIdx+1];
+    showModal('🎉','过关!', `下一关:${nextLv.n}×${nextLv.n} · 容错 ${nextLv.maxMistakes}`,
+      '继续', ()=>{hideModal(); startLevel(curIdx+1);},
+      '返回主页', goHome);
+  }else{
+    sfx.win();
+    showModal('🏆','全部通关!', '你完成了全部 '+LEVELS.length+' 关,记忆力惊人!',
+      '再玩一次', ()=>{hideModal(); startLevel(0);},
+      '返回主页', goHome);
+  }
+}
+
+function fail(reason){
+  sfx.fail();
+  const lv=LEVELS[curIdx];
+  showModal('💥','失败', `${reason}(${lv.n}×${lv.n} · 第 ${curIdx+1} 关)`,
+    '重试本关', ()=>{hideModal(); startLevel(curIdx);},
+    '返回主页', goHome);
+}
+
+function goHome(){ hideModal(); stopTimer(); renderBest(); showScreen('home'); }
+
+// ---- 弹窗 ----
+const overlay=$('#overlay');
+function showModal(emoji,title,desc,primaryText,primaryFn,secondaryText,secondaryFn){
+  $('#mEmoji').textContent=emoji; $('#mTitle').textContent=title; $('#mDesc').textContent=desc;
+  const p=$('#mPrimary'), s=$('#mSecondary');
+  p.textContent=primaryText; s.textContent=secondaryText;
+  p.onclick=primaryFn; s.onclick=secondaryFn;
+  overlay.classList.add('active');
+}
+function hideModal(){ overlay.classList.remove('active'); }
+
+// ---- 主页 ----
+function renderBest(){ const el=$('#bestLevel'); if(el) el.textContent = bestLevel>0 ? `${bestLevel}/${LEVELS.length}` : '—'; }
+
+$('#startBtn').addEventListener('click', ()=>startLevel(0));
+$('#quitBtn').addEventListener('click', goHome);
+$('#hintBtn').addEventListener('click', doHint);
+$('#muteBtn').addEventListener('click', toggleMute);
+window.addEventListener('resize', ()=>{ if(document.body.dataset.screen==='game') sizeBoard(); });
+document.body.dataset.screen = 'home';   // 初始背景
+playBgm('home');                          // 首页 BGM(首次交互后解锁播放)
+updateMuteUI();
+renderBest();
+</script>
+</body>
+</html>
