@@ -217,6 +217,11 @@
   .modal h2{margin:0 0 6px; font-size:24px;}
   .modal p{color:var(--muted); margin:0 0 22px; font-size:15px;}
   .modal .btn{width:100%; margin-top:10px; padding:14px;}
+  /* 广告占位框 */
+  .adbox{width:300px; max-width:72vw; height:170px; margin:0 auto 16px; border:3px dashed #c7c7d2; border-radius:14px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#f4f4f8; color:#8a8aa0; font-size:22px; font-weight:800; letter-spacing:1px;}
+  .adbox small{font-size:12px; font-weight:500; color:#aaa; margin-top:8px; letter-spacing:0;}
 </style>
 </head>
 <body>
@@ -264,6 +269,14 @@
     </div>
   </div>
 
+  <!-- 广告弹窗(占位:广告位招租) -->
+  <div class="overlay" id="adOverlay">
+    <div class="modal">
+      <div class="adbox">广告位招租<small>Ad space for rent</small></div>
+      <p id="adCountdown">3 秒后再试一次…</p>
+    </div>
+  </div>
+
 <script>
 /* =========================================================
    翻牌记忆 Memory Match —— 单文件实现(v2.5 PRD)
@@ -276,8 +289,9 @@ const PREVIEW_BY_N = {3:3, 4:4, 5:7, 6:10};  // 各网格开局记忆时间(秒)
 const FLIP_BACK_MS = 800;     // 翻错后翻回延时
 // 关卡计划(数组顺序=闯关顺序):n=网格边长,mis=可错次数。要加/删/调关卡改这里即可
 const LEVEL_PLAN = [
-  {n:4, mis:3}, {n:4, mis:2}, {n:4, mis:1}, {n:4, mis:0},   // 4×4 共 4 关:失误 3→2→1→0
-  {n:6, mis:3}, {n:6, mis:2},                                // 6×6 共 2 关
+  {n:2, mis:2},                                              // 2×2 热身
+  {n:4, mis:3}, {n:4, mis:2}, {n:4, mis:1}, {n:4, mis:0},   // 4×4:失误 3→2→1→0
+  {n:6, mis:3}, {n:6, mis:2},                                // 6×6
 ];
 
 // ---- 卡面映射:Cards/ 素材(逻辑只认 faceId=数组下标,换素材改这里即可)----
@@ -603,8 +617,20 @@ function fail(reason){
   sfx.fail();
   const lv=LEVELS[curIdx];
   showModal('💥','失败', `${reason}(${lv.n}×${lv.n} · 第 ${curIdx+1} 关)`,
-    '重试本关', ()=>{hideModal(); startLevel(curIdx);},
-    '返回主页', goHome);
+    '📺 看广告再试一次', ()=>{ hideModal(); showAd(()=>startLevel(curIdx)); },
+    '从第一关开始', ()=>{ hideModal(); startLevel(0); });
+}
+
+// 广告占位:展示"广告位招租" + 3 秒倒计时,结束后执行 onDone
+function showAd(onDone){
+  const ov=$('#adOverlay'), cd=$('#adCountdown');
+  let n=3; cd.textContent = n+' 秒后再试一次…';
+  ov.classList.add('active');
+  const iv=setInterval(()=>{
+    n--;
+    if(n>0){ cd.textContent = n+' 秒后再试一次…'; }
+    else { clearInterval(iv); ov.classList.remove('active'); onDone(); }
+  }, 1000);
 }
 
 function goHome(){ hideModal(); stopTimer(); renderBest(); showScreen('home'); }
